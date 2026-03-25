@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>PRIMOS SISTEMA FINAL (CORRIGIDO)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{font-family:Arial;background:#0b1220;color:white;margin:0}
+header{padding:20px;font-size:24px}
+.tabs{display:flex;gap:10px;padding:10px;flex-wrap:wrap}
+button{padding:10px;border:none;border-radius:8px;cursor:pointer}
+.aba{display:none;padding:20px}
+.active{display:block}
+.card{background:#111a2e;padding:15px;border-radius:10px;margin:10px}
+canvas{background:white;border-radius:10px}
+</style>
+</head>
+<body>
+
+<header>🚀 PRIMOS SISTEMA FINAL (OK)</header>
+
+<div style="padding:20px;">
+De: <input type="date" id="dataInicio">
+Até: <input type="date" id="dataFim">
+<button onclick="carregar()">Filtrar</button>
+</div>
+
+<div class="tabs">
+<button onclick="trocar('geral')">Geral</button>
+<button onclick="trocar('saida')">Saída</button>
+<button onclick="trocar('fechamento')">Fechamento</button>
+<button onclick="trocar('acessorio')">Acessórios</button>
+</div>
+
+<div id="geral" class="aba active">
+<div class="card">Faturamento: <span id="fat">0</span></div>
+<div class="card">Lucro: <span id="luc">0</span></div>
+</div>
+
+<div id="saida" class="aba"><canvas id="chartSaida"></canvas></div>
+<div id="fechamento" class="aba"><canvas id="chartFechamento"></canvas></div>
+<div id="acessorio" class="aba"><canvas id="chartAcessorio"></canvas></div>
+
+<script>
+
+const URL_CAIXA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQV_Q2G1HRDeAkJL9xMPyjl3SyF7pncJ6LQ6ci6N4WTz2eF8iABkG40l65ZR9tESUpyMuPvPSGIERfI/pub?gid=865196678&single=true&output=csv";
+const URL_SAIDA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQV_Q2G1HRDeAkJL9xMPyjl3SyF7pncJ6LQ6ci6N4WTz2eF8iABkG40l65ZR9tESUpyMuPvPSGIERfI/pub?gid=399953849&single=true&output=csv";
+const URL_FECHAMENTO = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQV_Q2G1HRDeAkJL9xMPyjl3SyF7pncJ6LQ6ci6N4WTz2eF8iABkG40l65ZR9tESUpyMuPvPSGIERfI/pub?gid=2038570709&single=true&output=csv";
+const URL_ACESSORIO = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQV_Q2G1HRDeAkJL9xMPyjl3SyF7pncJ6LQ6ci6N4WTz2eF8iABkG40l65ZR9tESUpyMuPvPSGIERfI/pub?gid=786488664&single=true&output=csv";
+
+function trocar(id){
+document.querySelectorAll('.aba').forEach(a=>a.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+}
+
+function parse(v){
+return Number((v||"").replace(/[^\d,-]/g,"").replace(",", "."))||0;
+}
+
+function formatarData(d){
+if(!d) return "";
+const p = d.split("/");
+return p.length===3 ? p[2]+"-"+p[1]+"-"+p[0] : "";
+}
+
+async function carregarCSV(url){
+const res = await fetch(url);
+const txt = await res.text();
+const sep = txt.includes(";") ? ";" : ",";
+const linhas = txt.split("\n").filter(l=>l.trim()!="");
+const header = linhas[0].split(sep).map(h=>h.trim());
+return {linhas, header, sep};
+}
+
+async function carregar(){
+
+const di = document.getElementById("dataInicio").value;
+const df = document.getElementById("dataFim").value;
+
+// ===== CAIXA =====
+const caixa = await carregarCSV(URL_CAIXA);
+
+const iData = caixa.header.findIndex(h=>h.toUpperCase().includes("DATA"));
+const iVenda = caixa.header.findIndex(h=>h.toUpperCase().includes("TOTAL"));
+const iCusto = caixa.header.findIndex(h=>h.toUpperCase().includes("CUSTO"));
+
+let fat=0, cus=0;
+
+caixa.linhas.slice(1).forEach(l=>{
+const col = l.split(caixa.sep);
+const data = formatarData(col[iData]);
+
+if(di && data < di) return;
+if(df && data > df) return;
+
+fat += parse(col[iVenda]);
+cus += parse(col[iCusto]);
+});
+
+document.getElementById("fat").innerText = fat.toLocaleString("pt-BR");
+document.getElementById("luc").innerText = (fat-cus).toLocaleString("pt-BR");
+
+// ===== SAIDA =====
+const saida = await carregarCSV(URL_SAIDA);
+let dadosSaida = {};
+
+const iDataS = saida.header.findIndex(h=>h.toUpperCase().includes("DATA"));
+const iValorS = saida.header.findIndex(h=>h.toUpperCase().includes("VALOR"));
+
+saida.linhas.slice(1).forEach(l=>{
+const col = l.split(saida.sep);
+const data = formatarData(col[iDataS]);
+
+if(di && data < di) return;
+if(df && data > df) return;
+
+dadosSaida[data] = (dadosSaida[data]||0) + parse(col[iValorS]);
+});
+
+new Chart(chartSaida,{
+type:"bar",
+data:{labels:Object.keys(dadosSaida),datasets:[{label:"Saída",data:Object.values(dadosSaida)}]}
+});
+
+// ===== FECHAMENTO =====
+const fechamento = await carregarCSV(URL_FECHAMENTO);
+let dadosF = {};
+
+const iDataF = fechamento.header.findIndex(h=>h.toUpperCase().includes("DATA"));
+const iValorF = fechamento.header.findIndex(h=>h.toUpperCase().includes("VALOR") || h.toUpperCase().includes("TOTAL"));
+
+fechamento.linhas.slice(1).forEach(l=>{
+const col = l.split(fechamento.sep);
+const data = formatarData(col[iDataF]);
+
+if(di && data < di) return;
+if(df && data > df) return;
+
+dadosF[data] = (dadosF[data]||0) + parse(col[iValorF]);
+});
+
+new Chart(chartFechamento,{
+type:"line",
+data:{labels:Object.keys(dadosF),datasets:[{label:"Fechamento",data:Object.values(dadosF)}]}
+});
+
+// ===== ACESSÓRIO =====
+const acc = await carregarCSV(URL_ACESSORIO);
+let dadosA = {};
+
+const iDataA = acc.header.findIndex(h=>h.toUpperCase().includes("DATA"));
+const iValorA = acc.header.findIndex(h=>h.toUpperCase().includes("VALOR"));
+
+acc.linhas.slice(1).forEach(l=>{
+const col = l.split(acc.sep);
+const data = formatarData(col[iDataA]);
+
+if(di && data < di) return;
+if(df && data > df) return;
+
+dadosA[data] = (dadosA[data]||0) + parse(col[iValorA]);
+});
+
+new Chart(chartAcessorio,{
+type:"bar",
+data:{labels:Object.keys(dadosA),datasets:[{label:"Acessórios",data:Object.values(dadosA)}]}
+});
+
+}
+
+carregar();
+
+</script>
+
+</body>
+</html>
